@@ -10,16 +10,18 @@ API may be added later.
 
 Installing
 ==========
-1. `# git clone git://github.com/orenhe/myip.git`
-2. `# pip install myip/` (path to myip sources)
+1. `git clone git://github.com/orenhe/myip.git`
+2. `sudo pip install myip/` 
+ * Replace `myip/` with path to myip sources
+ * Uninstall using `pip uninstall myip`
 
 Usage
 =====
-`# myip` - prints the primary IP.
+`myip` - prints the primary IP.
 
-`# myip --all` - prints all IPs configured on the system
+`myip --all` - prints all IPs configured on the system
 
-`# myip <iface name>` - prints the IP of given interface, e.g. _eth0_.
+`myip <iface name>` - prints the IP of given interface, e.g. _eth0_.
 
 MIT License
 ===========
