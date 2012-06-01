@@ -1,5 +1,0 @@
-#!/usr/bin/env python
-# A Linux tool for quickly finding out the host's main IP
-
-import myip
-myip.main()
