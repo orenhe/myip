@@ -58,7 +58,7 @@ def parse_ip_addr_cmd(specific_iface=None):
         right_side = block.partition(" inet ")[2]
         if right_side == "":
             logging.info("No IP found for iface %s", iface)
-            return None
+            continue
         ip = right_side.partition("/")[0]
         iface_ip_hash[iface] = ip
     return iface_ip_hash

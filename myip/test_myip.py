@@ -29,15 +29,27 @@ SAMPLE_IP_HASH2 = {"wlan0": "192.168.1.100",
                 "lo": "127.0.0.1",
                 }
 
-class MyIpTests(unittest.TestCase):
+SAMPLE_OUTPUT_NO_IP_ASSIGNED = """2: eth0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc pfifo_fast state DOWN qlen 1000
+    link/ether 00:21:cc:b9:cb:d5 brd ff:ff:ff:ff:ff:ff"""
+
+class IpaddrParserTests(unittest.TestCase):
     @patch("commands.getstatusoutput")
-    def test_get_ip_hash(self, mock_getoutput):
+    def test_one_interface(self, mock_getoutput):
         mock_getoutput.return_value = (0, SAMPLE_OUTPUT1)
         self.assertEquals(SAMPLE_IP_HASH1, myip_cmd.parse_ip_addr_cmd(["wlan0"]))
 
+    @patch("commands.getstatusoutput")
+    def test_multiple_interfaces(self, mock_getoutput):
         mock_getoutput.return_value = (0, SAMPLE_OUTPUT2)
         self.assertEquals(SAMPLE_IP_HASH2, myip_cmd.parse_ip_addr_cmd([]))
 
+    @patch("commands.getstatusoutput")
+    def test_interface_with_no_ip_assigned(self, mock_getoutput):
+        mock_getoutput.return_value = (0, SAMPLE_OUTPUT_NO_IP_ASSIGNED)
+        self.assertEquals({}, myip_cmd.parse_ip_addr_cmd([]))
+    
+
+class myipTests(unittest.TestCase):
     @patch("commands.getstatusoutput")
     def test_get_primary_ip(self, mock_getoutput):
         mock_getoutput.return_value = (0, SAMPLE_OUTPUT2)
@@ -58,3 +70,4 @@ class MyIpTests(unittest.TestCase):
         config = myip_cmd.parse_args(["wlan0"])
         ips = myip_cmd.get_ips(config)
         self.assertEquals(["192.168.1.102"], ips)
+
