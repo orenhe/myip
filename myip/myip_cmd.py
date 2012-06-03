@@ -15,6 +15,7 @@ IP_BIN = "/sbin/ip"
 BLACKLIST_IFACES = "lo"
 INTERFACE_NAME_PREFIX_BY_PRIORITY = ["eth", "wlan"]
 DEBUG_LEVEL = logging.WARNING # logging.DEBUG
+# DEBUG_LEVEL = logging.DEBUG
 
 logging.basicConfig(level=DEBUG_LEVEL)
 
@@ -27,7 +28,7 @@ def split_output_into_blocks(out):
             cur_entry += line + "\n"
             continue
 
-        if not line.startswith(" "):
+        if not line.startswith(" ") and not line.startswith("\t"):
             yield cur_entry
             cur_entry = line + "\n"
         else:
@@ -35,7 +36,7 @@ def split_output_into_blocks(out):
 
     yield cur_entry # last but not least
         
-def parse_ip_addr_cmd(specific_iface=None):
+def parse_ip_addr_cmd_linux(specific_iface=None):
     cmdline = "{ip_bin} addr show".format(ip_bin=IP_BIN)
     if specific_iface:
         cmdline += " dev {iface}".format(iface=specific_iface)
@@ -60,6 +61,34 @@ def parse_ip_addr_cmd(specific_iface=None):
             logging.info("No IP found for iface %s", iface)
             continue
         ip = right_side.partition("/")[0]
+        iface_ip_hash[iface] = ip
+    return iface_ip_hash
+
+def parse_ip_addr_cmd_OSX(specific_iface=None):
+    cmdline = "ifconfig"
+    if specific_iface:
+        cmdline += " {iface}".format(iface=specific_iface)
+    stat, out = commands.getstatusoutput(cmdline)
+    if stat != 0:
+        raise Exception("Command '{cmdline}' failed (rc={rc}): {out}".format(cmdline=cmdline, rc=stat, out=out))
+
+    iface_ip_hash = {}
+    for block in split_output_into_blocks(out):
+        logging.debug("Working on block '%s'", block)
+        match = re.search("^([^:]+):", block)
+        if not match:
+            logging.error("Bad block, skipping: '%s'", block)
+            continue
+
+        iface = match.groups()[0]
+        if not "UP" in block:
+            logging.info("'%s' is not UP, skipping", iface)
+            continue
+        right_side = block.partition("inet ")[2]
+        if right_side == "":
+            logging.info("No IP found for iface %s", iface)
+            continue
+        ip = right_side.partition(" ")[0]
         iface_ip_hash[iface] = ip
     return iface_ip_hash
 
@@ -88,19 +117,22 @@ def parse_args(args):
 def generate_ip_list_ordered_by_iface(ip_hash, interface_list):
     ips = []
     for interface in interface_list:
-         ips.append(ip_hash[interface])
+        ips.append(ip_hash[interface])
 
     return ips
 
-def get_ip_of_specific_interface(iface):
+def get_ip_of_specific_interface_linux(iface):
     return parse_ip_addr_cmd(iface)[iface]
+
+def get_ip_of_specific_interface_OSX(iface):
+    return parse_ip_addr_cmd_OSX(iface)[iface]
 
 
 def get_ips(config):
     if config.interface: # interface param provided
-        return [get_ip_of_specific_interface(config.interface)]
+        return [get_ip_of_specific_interface_OSX(config.interface)]
 
-    ifaces_hash = parse_ip_addr_cmd()
+    ifaces_hash = parse_ip_addr_cmd_OSX()
     filtered_ifaces = [k for k in ifaces_hash.keys() if k not in BLACKLIST_IFACES]
 
     ifaces_by_priority = prioritize_ifaces(INTERFACE_NAME_PREFIX_BY_PRIORITY, filtered_ifaces)
