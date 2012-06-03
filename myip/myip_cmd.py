@@ -13,9 +13,8 @@ import re
 # Consts
 IP_BIN = "/sbin/ip"
 BLACKLIST_IFACES = "lo"
-INTERFACE_NAME_PREFIX_BY_PRIORITY = ["eth", "wlan"]
+INTERFACE_NAME_PREFIX_BY_PRIORITY = ["eth", "wlan", "en0", "en1"]
 DEBUG_LEVEL = logging.WARNING # logging.DEBUG
-# DEBUG_LEVEL = logging.DEBUG
 
 logging.basicConfig(level=DEBUG_LEVEL)
 
@@ -105,7 +104,6 @@ def prioritize_ifaces(prio_list, keys):
 
     return prioritized_list
 
-
 def parse_args(args):
     parse = argparse.ArgumentParser(description="myip: Simple tool to display the current IP")
     parse.add_argument('--all', const=True, action='store_const', dest="all_ips", help="show all IPs")
@@ -122,18 +120,27 @@ def generate_ip_list_ordered_by_iface(ip_hash, interface_list):
     return ips
 
 def get_ip_of_specific_interface_linux(iface):
-    return parse_ip_addr_cmd(iface)[iface]
+    return parse_ip_addr_cmd_linux(iface)[iface]
 
 def get_ip_of_specific_interface_OSX(iface):
     return parse_ip_addr_cmd_OSX(iface)[iface]
 
-
 def get_ips(config):
-    if config.interface: # interface param provided
-        return [get_ip_of_specific_interface_OSX(config.interface)]
+    if sys.platform.startswith('linux'):
+        get_ip_of_specific_interface = get_ip_of_specific_interface_linux
+        parse_ip_addr_cmd = parse_ip_addr_cmd_linux
+    elif sys.platform.startswith('darwin'):
+        get_ip_of_specific_interface = get_ip_of_specific_interface_OSX
+        parse_ip_addr_cmd = parse_ip_addr_cmd_OSX
+    else:
+        logging.error("Platform %s is not supported", sys.platform)
+        return []
 
-    ifaces_hash = parse_ip_addr_cmd_OSX()
-    filtered_ifaces = [k for k in ifaces_hash.keys() if k not in BLACKLIST_IFACES]
+    if config.interface: # interface param provided
+        return [get_ip_of_specific_interface(config.interface)]
+
+    ifaces_hash = parse_ip_addr_cmd()
+    filtered_ifaces = [k for k in ifaces_hash.keys() if not k.startswith(BLACKLIST_IFACES)]
 
     ifaces_by_priority = prioritize_ifaces(INTERFACE_NAME_PREFIX_BY_PRIORITY, filtered_ifaces)
     if config.all_ips:
