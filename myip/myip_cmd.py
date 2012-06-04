@@ -1,9 +1,11 @@
-import os
 import commands
 import logging
 import sys
 import argparse
 import re
+import platform
+
+import parsing
 
 # TODO detect primary interface by default route
 # TODO check virtual interfaces (eth0:1) and funny iface names
@@ -11,85 +13,14 @@ import re
 # TODO check IPless up interfaces
 
 # Consts
-IP_BIN = "/sbin/ip"
-BLACKLIST_IFACES = "lo"
-INTERFACE_NAME_PREFIX_BY_PRIORITY = ["eth", "wlan", "en0", "en1"]
+BLACKLIST_IFACES_PREFIX = "lo"
+INTERFACE_NAME_PREFIX_BY_PRIORITY = ["eth", "wlan", "en0", "en1"] # TODO move setting to OS-specific plugin
 DEBUG_LEVEL = logging.WARNING # logging.DEBUG
 
 logging.basicConfig(level=DEBUG_LEVEL)
 
-def split_output_into_blocks(out):
-    cur_entry = ""
-    first_line = True
-    for line in out.split("\n"):
-        if first_line:
-            first_line = False
-            cur_entry += line + "\n"
-            continue
-
-        if not line.startswith(" ") and not line.startswith("\t"):
-            yield cur_entry
-            cur_entry = line + "\n"
-        else:
-            cur_entry += line + "\n"
-
-    yield cur_entry # last but not least
-        
-def parse_ip_addr_cmd_linux(specific_iface=None):
-    cmdline = "{ip_bin} addr show".format(ip_bin=IP_BIN)
-    if specific_iface:
-        cmdline += " dev {iface}".format(iface=specific_iface)
-    stat, out = commands.getstatusoutput(cmdline)
-    if stat != 0:
-        raise Exception("Command '{cmdline}' failed (rc={rc}): {out}".format(cmdline=cmdline, rc=stat, out=out))
-
-    iface_ip_hash = {}
-    for block in split_output_into_blocks(out):
-        logging.debug("Working on block '%s'", block)
-        match = re.search("^\d+:\s+([^:]+):", block)
-        if not match:
-            logging.error("Bad block, skipping: '%s'", block)
-            continue
-
-        iface = match.groups()[0]
-        if not "UP" in block:
-            logging.info("'%s' is not UP, skipping", iface)
-            continue
-        right_side = block.partition(" inet ")[2]
-        if right_side == "":
-            logging.info("No IP found for iface %s", iface)
-            continue
-        ip = right_side.partition("/")[0]
-        iface_ip_hash[iface] = ip
-    return iface_ip_hash
-
-def parse_ip_addr_cmd_OSX(specific_iface=None):
-    cmdline = "ifconfig"
-    if specific_iface:
-        cmdline += " {iface}".format(iface=specific_iface)
-    stat, out = commands.getstatusoutput(cmdline)
-    if stat != 0:
-        raise Exception("Command '{cmdline}' failed (rc={rc}): {out}".format(cmdline=cmdline, rc=stat, out=out))
-
-    iface_ip_hash = {}
-    for block in split_output_into_blocks(out):
-        logging.debug("Working on block '%s'", block)
-        match = re.search("^([^:]+):", block)
-        if not match:
-            logging.error("Bad block, skipping: '%s'", block)
-            continue
-
-        iface = match.groups()[0]
-        if not "UP" in block:
-            logging.info("'%s' is not UP, skipping", iface)
-            continue
-        right_side = block.partition("inet ")[2]
-        if right_side == "":
-            logging.info("No IP found for iface %s", iface)
-            continue
-        ip = right_side.partition(" ")[0]
-        iface_ip_hash[iface] = ip
-    return iface_ip_hash
+# Globals
+parse_ip_addr_cmd = None
 
 def prioritize_ifaces(prio_list, keys):
     prioritized_list = []
@@ -119,28 +50,27 @@ def generate_ip_list_ordered_by_iface(ip_hash, interface_list):
 
     return ips
 
-def get_ip_of_specific_interface_linux(iface):
-    return parse_ip_addr_cmd_linux(iface)[iface]
+def get_ip_of_specific_interface(iface):
+    return parse_ip_addr_cmd(iface)[iface]
 
-def get_ip_of_specific_interface_OSX(iface):
-    return parse_ip_addr_cmd_OSX(iface)[iface]
+def load_platform_support():
+    # pylint: disable=W0603
+    global parse_ip_addr_cmd
+    os_name = platform.system().lower()
+
+    if not parse_ip_addr_cmd:
+        try:
+            os_module = getattr(__import__("myip", fromlist=[os_name]), os_name)
+            parse_ip_addr_cmd = os_module.parse_ip_addr_cmd
+        except ImportError:
+            logging.error("Failed loading platform %s support", os_name)
 
 def get_ips(config):
-    if sys.platform.startswith('linux'):
-        get_ip_of_specific_interface = get_ip_of_specific_interface_linux
-        parse_ip_addr_cmd = parse_ip_addr_cmd_linux
-    elif sys.platform.startswith('darwin'):
-        get_ip_of_specific_interface = get_ip_of_specific_interface_OSX
-        parse_ip_addr_cmd = parse_ip_addr_cmd_OSX
-    else:
-        logging.error("Platform %s is not supported", sys.platform)
-        return []
-
     if config.interface: # interface param provided
         return [get_ip_of_specific_interface(config.interface)]
 
     ifaces_hash = parse_ip_addr_cmd()
-    filtered_ifaces = [k for k in ifaces_hash.keys() if not k.startswith(BLACKLIST_IFACES)]
+    filtered_ifaces = [k for k in ifaces_hash.keys() if not k.startswith(BLACKLIST_IFACES_PREFIX)]
 
     ifaces_by_priority = prioritize_ifaces(INTERFACE_NAME_PREFIX_BY_PRIORITY, filtered_ifaces)
     if config.all_ips:
@@ -153,6 +83,7 @@ def get_ips(config):
     return ips
     
 def main():
+    load_platform_support()
     config = parse_args(sys.argv[1:])
     ips = get_ips(config)
     for ip in ips:
