@@ -10,10 +10,9 @@ API may be added later.
 
 Installing
 ==========
-1. `git clone git://github.com/orenhe/myip.git`
-2. `sudo pip install myip/` 
- * Replace `myip/` with path to myip sources
- * Uninstall using `pip uninstall myip`
+`sudo pip install myip` 
+
+Uninstall using `pip uninstall myip`
 
 Usage
 =====
