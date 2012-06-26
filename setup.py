@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(name = 'myip',
       version = '0.1',
-      description = 'Tool for displaying IP',
+      description = "Simply print the IP of the current host",
       author = 'Oren Held',
       author_email = 'oren@held.org.il',
       url = 'http://www.github.com/orenhe/myip',
